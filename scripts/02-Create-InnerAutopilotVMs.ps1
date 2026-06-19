@@ -5,16 +5,22 @@
 # - DC01
 # - WIN11-Normal
 # - WIN11-OOBE
+#
+# VM-Daten:
+#   C:\AutopilotLab
+#
+# ISOs:
+#   C:\Deploy\ISO
 # ============================================================
 
 param (
     [string]$LabSwitchName = "AP-LAN",
     [string]$DeployRoot = "C:\Deploy",
-    [string]$BasePath = "D:\AutopilotLab",
-    [string]$VMPath = "D:\AutopilotLab\VMs",
-    [string]$VHDXPath = "D:\AutopilotLab\VHDX",
-    [string]$ServerIso = "D:\ISO\WindowsServer2022.iso",
-    [string]$Win11Iso = "D:\ISO\Win11.iso"
+    [string]$BasePath = "C:\AutopilotLab",
+    [string]$VMPath = "C:\AutopilotLab\VMs",
+    [string]$VHDXPath = "C:\AutopilotLab\VHDX",
+    [string]$ServerIso = "C:\Deploy\ISO\WindowsServer2022.iso",
+    [string]$Win11Iso = "C:\Deploy\ISO\Win11.iso"
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,7 +42,7 @@ $VMDefinitions = @(
         Cpu = 2
         VhdSize = 100GB
         EnableTpm = $false
-        Notes = "Domain Controller, DNS, DHCP und Intune Connector für Autopilot Hybrid Schulung."
+        Notes = "Domain Controller, DNS, DHCP und Intune Connector fuer Autopilot Hybrid Schulung."
     },
     @{
         Name = "WIN11-Normal"
@@ -47,7 +53,7 @@ $VMDefinitions = @(
         Cpu = 2
         VhdSize = 100GB
         EnableTpm = $true
-        Notes = "Normales Windows 11 Vergleichsgerät. Darf klassisch installiert werden."
+        Notes = "Normales Windows 11 Vergleichsgeraet. Darf klassisch installiert werden."
     },
     @{
         Name = "WIN11-OOBE"
@@ -58,7 +64,7 @@ $VMDefinitions = @(
         Cpu = 2
         VhdSize = 100GB
         EnableTpm = $true
-        Notes = "Autopilot-Testgerät. Nur bis OOBE installieren. Nicht fertig einrichten."
+        Notes = "Autopilot-Testgeraet. Nur bis OOBE installieren. Nicht fertig einrichten."
     }
 )
 
@@ -66,13 +72,13 @@ Write-Host ""
 Write-Host "Erstelle innere Autopilot-Lab-VMs..." -ForegroundColor Cyan
 
 if (-not (Get-WindowsFeature -Name Hyper-V).Installed) {
-    throw "Hyper-V ist nicht installiert. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausführen."
+    throw "Hyper-V ist nicht installiert. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausfuehren."
 }
 
 Import-Module Hyper-V -ErrorAction Stop
 
 if (-not (Get-VMSwitch -Name $LabSwitchName -ErrorAction SilentlyContinue)) {
-    throw "vSwitch $LabSwitchName wurde nicht gefunden. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausführen."
+    throw "vSwitch $LabSwitchName wurde nicht gefunden. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausfuehren."
 }
 
 if (-not (Test-Path $ServerIso)) {
@@ -106,7 +112,7 @@ function New-AutopilotTrainingVM {
     $ThisVHDPath = Join-Path $VHDXPath "$Name.vhdx"
 
     if (Get-VM -Name $Name -ErrorAction SilentlyContinue) {
-        Write-Host "VM existiert bereits, überspringe: $Name" -ForegroundColor Yellow
+        Write-Host "VM existiert bereits, ueberspringe: $Name" -ForegroundColor Yellow
         return
     }
 
@@ -130,9 +136,9 @@ function New-AutopilotTrainingVM {
         try {
             Set-VMKeyProtector -VMName $Name -NewLocalKeyProtector
             Enable-VMTPM -VMName $Name
-            Write-Host "vTPM aktiviert für: $Name" -ForegroundColor Green
+            Write-Host "vTPM aktiviert fuer: $Name" -ForegroundColor Green
         } catch {
-            Write-Host "Warnung: vTPM konnte für $Name nicht aktiviert werden: $_" -ForegroundColor Yellow
+            Write-Host "Warnung: vTPM konnte fuer $Name nicht aktiviert werden: $_" -ForegroundColor Yellow
         }
     }
 
@@ -153,7 +159,7 @@ Write-Host "Innere VMs wurden erstellt." -ForegroundColor Green
 Write-Host ""
 Write-Host "Installationsreihenfolge:"
 Write-Host "1. DC01 installieren"
-Write-Host "2. In DC01: 03-Setup-DC01-AutopilotHybrid.ps1 ausführen"
+Write-Host "2. In DC01: 03-Setup-DC01-AutopilotHybrid.ps1 ausfuehren"
 Write-Host "3. WIN11-Normal normal installieren"
 Write-Host "4. WIN11-OOBE nur bis OOBE installieren und dort stoppen"
 Write-Host ""
