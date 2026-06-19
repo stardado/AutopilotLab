@@ -10,7 +10,7 @@
 
 param (
     [switch]$RunSysprep,
-    [switch]$CreateDesktopBootstrapStarter = $true
+    [switch]$NoDesktopBootstrapStarter
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,17 +26,18 @@ Write-Host "Starte VHDX-/Golden-Image-Vorbereitung..." -ForegroundColor Cyan
 Write-Host "Script: $ScriptPath"
 Write-Host ""
 
-$Arguments = @()
-
-if ($CreateDesktopBootstrapStarter) {
-    $Arguments += "-CreateDesktopBootstrapStarter"
-}
-
 if ($RunSysprep) {
     Write-Host "Sysprep wird am Ende ausgefuehrt. Die VM faehrt danach herunter." -ForegroundColor Yellow
-    $Arguments += "-RunSysprep"
 } else {
     Write-Host "Testlauf ohne Sysprep. Zum Finalisieren dieses Script mit -RunSysprep starten." -ForegroundColor Yellow
 }
 
-& $ScriptPath @Arguments
+if ($NoDesktopBootstrapStarter -and $RunSysprep) {
+    & $ScriptPath -RunSysprep
+} elseif ($NoDesktopBootstrapStarter) {
+    & $ScriptPath
+} elseif ($RunSysprep) {
+    & $ScriptPath -CreateDesktopBootstrapStarter -RunSysprep
+} else {
+    & $ScriptPath -CreateDesktopBootstrapStarter
+}
