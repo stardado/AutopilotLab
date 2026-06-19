@@ -1,11 +1,10 @@
 {
-  "OuterDeployment": {
-    "ClusterName": "ML-CL-11",
-    "SwitchName": "XG_Link",
-    "TemplatePath": "C:\\ClusterStorage\\SAN02-VOL01-10K\\Vorlagen\\Autopilot-HV",
-    "TemplateFile": "Autopilot-HV-Server2022-Template.vhdx",
-    "FastStoragePath": "C:\\ClusterStorage\\SAN02-VOL02-SSD\\VMs\\",
-    "BackupStoragePath": "C:\\ClusterStorage\\NAS01-VOL04-7.2K-R5\\VMs\\"
+  "LocalPaths": {
+    "DeployRoot": "C:\\Deploy",
+    "IsoPath": "C:\\Deploy\\ISO",
+    "LabRoot": "C:\\AutopilotLab",
+    "VmPath": "C:\\AutopilotLab\\VMs",
+    "VhdxPath": "C:\\AutopilotLab\\VHDX"
   },
   "InnerLab": {
     "SwitchName": "AP-LAN",
