@@ -1,10 +1,10 @@
 # Autopilot Hybrid Lab Deployment
 
-Dieses Paket enthält die Scripte für ein Autopilot-Hybrid-Schulungssystem auf eurer Hyper-V-/Cluster-Umgebung.
+Dieses Repo enthält die Scripte für ein Autopilot-Hybrid-Schulungssystem auf eurer Hyper-V-/Cluster-Umgebung.
 
 ## Zielbild
 
-Äußeres Cluster-Deployment erstellt pro Teilnehmer/Umgebung einen Nested-Hyper-V-Server:
+Das äußere Deployment erstellt pro Teilnehmer oder Umgebung einen Nested-Hyper-V-Server:
 
 ```text
 V<VLAN> DEMO-AP-HV-01
@@ -20,126 +20,52 @@ WIN11-Normal
 WIN11-OOBE
 ```
 
-- `DC01`: Domain Controller, DNS, DHCP, optional Intune Connector for Active Directory
-- `WIN11-Normal`: normales Windows 11 Vergleichsgerät
-- `WIN11-OOBE`: Autopilot-Hybrid-Testgerät, bleibt bis zur OOBE stehen
-
-## Empfohlener Ablauf
-
-### 1. Eigene HV-Template-VHDX vorbereiten
-
-In einer einmaligen Template-Build-VM ausführen:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\scripts\00-Prepare-AutopilotHV-Template.ps1 -RunSysprep
-```
-
-Danach die generalisierte VHDX ablegen unter:
+## Aktuelle Standardpfade
 
 ```text
-C:\ClusterStorage\SAN02-VOL01-10K\Vorlagen\Autopilot-HV\Autopilot-HV-Server2022-Template.vhdx
+C:\Deploy\bootstrap
+C:\Deploy\scripts
+C:\Deploy\logs
+C:\Deploy\temp
+C:\Deploy\ISO
+C:\AutopilotLab\VMs
+C:\AutopilotLab\VHDX
 ```
 
-### 2. Äußere Nested-HV-Umgebungen auf dem Cluster erstellen
-
-Auf dem Management-Host/Cluster-Kontext ausführen:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\scripts\00-Deploy-Outer-HV-Environments.ps1
-```
-
-Das Script fragt ab:
-
-- VLAN ID
-- Anzahl Schulungsumgebungen, 1 bis 7
-
-### 3. Bootstrap auf jedem Nested-HV aus Git laden
-
-Einzeiler, Beispiel für GitHub Raw:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Path 'C:\Deploy\bootstrap' -Force | Out-Null; iwr -UseBasicParsing 'https://raw.githubusercontent.com/DEIN-ORG/AutopilotHybridLab/main/bootstrap/Install-AutopilotLabScripts.ps1' -OutFile 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1'; & 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1' -RunPrepareHost"
-```
-
-Der Bootstrap lädt alles nach:
+Die ISO-Dateien werden hier erwartet:
 
 ```text
-C:\Deploy\
-├── bootstrap\
-├── scripts\
-├── logs\
-└── temp\
+C:\Deploy\ISO\WindowsServer2022.iso
+C:\Deploy\ISO\Win11.iso
 ```
 
-### 4. ISOs ablegen
+## Schnellstart auf dem Nested-HV
 
-Auf dem Nested-HV:
-
-```text
-D:\ISO\WindowsServer2022.iso
-D:\ISO\Win11.iso
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Path 'C:\Deploy\bootstrap' -Force | Out-Null; iwr -UseBasicParsing 'https://raw.githubusercontent.com/stardado/AutopilotLab/main/bootstrap/Install-AutopilotLabScripts.ps1' -OutFile 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1'; & 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1' -RunPrepareHost"
 ```
 
-### 5. Innere VMs erstellen
+Wenn die Hyper-V-Rolle installiert wird und der Server neu startet, den gleichen Befehl danach erneut ausführen.
+
+Danach die ISO-Dateien nach `C:\Deploy\ISO` kopieren und die inneren VMs erstellen:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\02-Create-InnerAutopilotVMs.ps1
 ```
 
-### 6. DC01 einrichten
+## Rollen der inneren VMs
 
-In der VM `DC01`:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\03-Setup-DC01-AutopilotHybrid.ps1
-```
-
-### 7. Intune Connector installieren
-
-Auf `DC01` den aktuellen **Intune Connector for Active Directory** installieren und anmelden.
-
-Danach:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\04-Delegate-IntuneConnectorRights.ps1
-```
-
-### 8. WIN11-OOBE vorbereiten
-
-`WIN11-OOBE` nur bis zum OOBE-Screen starten. Dann:
-
-```text
-SHIFT + F10
-powershell
-```
-
-Dann Script ausführen bzw. Inhalt einfügen:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\05-Get-AutopilotHash-OOBE.ps1
-```
+- `DC01`: Domain Controller, DNS, DHCP und optional Intune Connector for Active Directory
+- `WIN11-Normal`: normales Windows 11 Vergleichsgerät
+- `WIN11-OOBE`: Autopilot-Hybrid-Testgerät
 
 ## Intune-Werte
 
-Domain Join Profile:
-
 ```text
-Domain name:
-training.local
-
-OU:
-OU=Autopilot,OU=Devices,DC=training,DC=local
-
-Computer name prefix:
-AP-
+Domain name: training.local
+OU: OU=Autopilot,OU=Devices,DC=training,DC=local
+Computer name prefix: AP-
+Group Tag: HYBRID-TRAINING
 ```
-
-Autopilot Group Tag:
-
-```text
-HYBRID-TRAINING
-```
-
-## Hinweis
 
 Ohne XGS/Firewall arbeitet das innere Lab mit internem Hyper-V-Switch und NAT. Dadurch können alle Schulungsumgebungen denselben internen Bereich `10.10.0.0/24` verwenden, ohne sich gegenseitig zu stören.
