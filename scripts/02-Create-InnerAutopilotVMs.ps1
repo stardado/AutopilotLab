@@ -25,6 +25,18 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+function Assert-HyperVReady {
+    if (-not (Get-Module -ListAvailable -Name Hyper-V)) {
+        throw "Das Hyper-V PowerShell-Modul wurde nicht gefunden. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausfuehren und nach einer Rolleninstallation neu starten."
+    }
+
+    Import-Module Hyper-V -ErrorAction Stop
+
+    if (-not (Get-Command Get-VM -ErrorAction SilentlyContinue)) {
+        throw "Hyper-V Cmdlets sind nicht verfuegbar. Bitte Server neu starten oder Hyper-V erneut aktivieren."
+    }
+}
+
 $LogPath = Join-Path $DeployRoot "logs"
 if (-not (Test-Path $LogPath)) {
     New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
@@ -71,11 +83,7 @@ $VMDefinitions = @(
 Write-Host ""
 Write-Host "Erstelle innere Autopilot-Lab-VMs..." -ForegroundColor Cyan
 
-if (-not (Get-WindowsFeature -Name Hyper-V).Installed) {
-    throw "Hyper-V ist nicht installiert. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausfuehren."
-}
-
-Import-Module Hyper-V -ErrorAction Stop
+Assert-HyperVReady
 
 if (-not (Get-VMSwitch -Name $LabSwitchName -ErrorAction SilentlyContinue)) {
     throw "vSwitch $LabSwitchName wurde nicht gefunden. Bitte zuerst 01-Prepare-NestedHyperVHost.ps1 ausfuehren."
