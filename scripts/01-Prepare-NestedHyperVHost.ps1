@@ -25,6 +25,54 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+function Test-HyperVInstalled {
+    if (Get-Command Get-WindowsFeature -ErrorAction SilentlyContinue) {
+        $Feature = Get-WindowsFeature -Name Hyper-V -ErrorAction SilentlyContinue
+        if ($Feature) {
+            return [bool]$Feature.Installed
+        }
+    }
+
+    if (Get-Command Get-WindowsOptionalFeature -ErrorAction SilentlyContinue) {
+        $FeatureNames = @("Microsoft-Hyper-V-All", "Microsoft-Hyper-V")
+
+        foreach ($FeatureName in $FeatureNames) {
+            $Feature = Get-WindowsOptionalFeature -Online -FeatureName $FeatureName -ErrorAction SilentlyContinue
+            if ($Feature -and $Feature.State -eq "Enabled") {
+                return $true
+            }
+        }
+    }
+
+    if (Get-Module -ListAvailable -Name Hyper-V) {
+        return $true
+    }
+
+    return $false
+}
+
+function Install-HyperVFeature {
+    if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
+        Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
+        return
+    }
+
+    if (Get-Command Enable-WindowsOptionalFeature -ErrorAction SilentlyContinue) {
+        $FeatureNames = @("Microsoft-Hyper-V-All", "Microsoft-Hyper-V")
+
+        foreach ($FeatureName in $FeatureNames) {
+            $Feature = Get-WindowsOptionalFeature -Online -FeatureName $FeatureName -ErrorAction SilentlyContinue
+            if ($Feature) {
+                Enable-WindowsOptionalFeature -Online -FeatureName $FeatureName -All -NoRestart
+                Write-Host "Hyper-V wurde aktiviert. Bitte Server neu starten und das Script erneut ausfuehren." -ForegroundColor Yellow
+                return
+            }
+        }
+    }
+
+    throw "Hyper-V konnte nicht installiert werden. Weder Install-WindowsFeature noch passende WindowsOptionalFeature wurden gefunden."
+}
+
 $LogPath = Join-Path $DeployRoot "logs"
 if (-not (Test-Path $LogPath)) {
     New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
@@ -89,18 +137,14 @@ foreach ($Folder in $Folders) {
     }
 }
 
-$HyperVFeature = Get-WindowsFeature -Name Hyper-V -ErrorAction SilentlyContinue
-
-if ($HyperVFeature -and -not $HyperVFeature.Installed) {
-    Write-Host "Hyper-V Rolle ist nicht installiert. Installation wird gestartet..." -ForegroundColor Yellow
+if (-not (Test-HyperVInstalled)) {
+    Write-Host "Hyper-V ist nicht installiert. Installation/Aktivierung wird gestartet..." -ForegroundColor Yellow
     Stop-Transcript
-    Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
+    Install-HyperVFeature
     exit
 }
 
-if ($HyperVFeature -and $HyperVFeature.Installed) {
-    Write-Host "Hyper-V Rolle ist bereits installiert." -ForegroundColor Green
-}
+Write-Host "Hyper-V ist installiert oder das Hyper-V-Modul ist verfuegbar." -ForegroundColor Green
 
 Import-Module Hyper-V -ErrorAction Stop
 
