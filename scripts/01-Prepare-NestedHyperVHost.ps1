@@ -3,12 +3,12 @@
 #
 # Bereitet den Nested-Hyper-V-Host vor.
 #
-# Scripte/Logs:
+# Scripte/Logs/ISOs:
 #   C:\Deploy
+#   C:\Deploy\ISO
 #
-# VMs/ISOs:
-#   D:\AutopilotLab
-#   D:\ISO
+# VM-Daten:
+#   C:\AutopilotLab
 # ============================================================
 
 param (
@@ -17,10 +17,10 @@ param (
     [int]$LabPrefixLength = 24,
     [string]$LabNatPrefix = "10.10.0.0/24",
     [string]$LabNatName = "NAT-AP-LAN",
-    [string]$DataDriveLetter = "D",
+    [string]$DataDriveLetter = "",
     [string]$DeployRoot = "C:\Deploy",
-    [string]$BasePath = "D:\AutopilotLab",
-    [string]$IsoPath = "D:\ISO"
+    [string]$BasePath = "C:\AutopilotLab",
+    [string]$IsoPath = "C:\Deploy\ISO"
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,40 +35,51 @@ Start-Transcript -Path "$LogPath\01-Prepare-NestedHyperVHost.log" -Force
 Write-Host ""
 Write-Host "Bereite Nested-Hyper-V-Host vor..." -ForegroundColor Cyan
 
-$ExistingVolume = Get-Volume -DriveLetter $DataDriveLetter -ErrorAction SilentlyContinue
+# ============================================================
+# Optionale Datenplatte vorbereiten
+# Standard ist aus, weil VM-Daten auf C:\AutopilotLab liegen.
+# Nur nutzen, wenn bewusst ein Laufwerksbuchstabe angegeben wird.
+# ============================================================
 
-if (-not $ExistingVolume) {
-    Write-Host "Kein Laufwerk $DataDriveLetter`: gefunden. Suche RAW-Datenträger..." -ForegroundColor Yellow
+if (-not [string]::IsNullOrWhiteSpace($DataDriveLetter)) {
+    $ExistingVolume = Get-Volume -DriveLetter $DataDriveLetter -ErrorAction SilentlyContinue
 
-    $RawDisk = Get-Disk |
-        Where-Object { $_.PartitionStyle -eq "RAW" -and $_.OperationalStatus -eq "Online" } |
-        Sort-Object Number |
-        Select-Object -First 1
+    if (-not $ExistingVolume) {
+        Write-Host "Kein Laufwerk $DataDriveLetter`: gefunden. Suche RAW-Datentraeger..." -ForegroundColor Yellow
 
-    if ($RawDisk) {
-        Write-Host "Initialisiere Datenträger $($RawDisk.Number) als $DataDriveLetter`: ..." -ForegroundColor Cyan
+        $RawDisk = Get-Disk |
+            Where-Object { $_.PartitionStyle -eq "RAW" -and $_.OperationalStatus -eq "Online" } |
+            Sort-Object Number |
+            Select-Object -First 1
 
-        Initialize-Disk -Number $RawDisk.Number -PartitionStyle GPT
+        if ($RawDisk) {
+            Write-Host "Initialisiere Datentraeger $($RawDisk.Number) als $DataDriveLetter`: ..." -ForegroundColor Cyan
 
-        New-Partition -DiskNumber $RawDisk.Number -UseMaximumSize -DriveLetter $DataDriveLetter |
-            Format-Volume -FileSystem NTFS -NewFileSystemLabel "AutopilotLabData" -Confirm:$false
+            Initialize-Disk -Number $RawDisk.Number -PartitionStyle GPT
+
+            New-Partition -DiskNumber $RawDisk.Number -UseMaximumSize -DriveLetter $DataDriveLetter |
+                Format-Volume -FileSystem NTFS -NewFileSystemLabel "AutopilotLabData" -Confirm:$false
+        } else {
+            Write-Host "Kein RAW-Datentraeger gefunden. Verwende vorhandene Pfade, sofern moeglich." -ForegroundColor Yellow
+        }
     } else {
-        Write-Host "Kein RAW-Datenträger gefunden. Verwende vorhandene Pfade, sofern möglich." -ForegroundColor Yellow
+        Write-Host "Laufwerk $DataDriveLetter`: ist vorhanden." -ForegroundColor Green
     }
 } else {
-    Write-Host "Laufwerk $DataDriveLetter`: ist vorhanden." -ForegroundColor Green
+    Write-Host "Datenplatten-Initialisierung uebersprungen. VM-Daten liegen unter $BasePath." -ForegroundColor Green
 }
 
 $Folders = @(
     $DeployRoot,
+    "$DeployRoot\bootstrap",
     "$DeployRoot\scripts",
     "$DeployRoot\logs",
     "$DeployRoot\temp",
+    $IsoPath,
     $BasePath,
     "$BasePath\VMs",
     "$BasePath\VHDX",
-    "$BasePath\Export",
-    $IsoPath
+    "$BasePath\Export"
 )
 
 foreach ($Folder in $Folders) {
@@ -120,7 +131,7 @@ if (-not (Get-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $LabGatewa
 $ExistingNat = Get-NetNat -Name $LabNatName -ErrorAction SilentlyContinue
 
 if (-not $ExistingNat) {
-    Write-Host "Erstelle NAT: $LabNatName für $LabNatPrefix" -ForegroundColor Cyan
+    Write-Host "Erstelle NAT: $LabNatName fuer $LabNatPrefix" -ForegroundColor Cyan
     New-NetNat -Name $LabNatName -InternalIPInterfaceAddressPrefix $LabNatPrefix | Out-Null
 } else {
     Write-Host "NAT existiert bereits: $LabNatName" -ForegroundColor Green
@@ -140,7 +151,7 @@ Write-Host "Bitte ISOs hier ablegen:"
 Write-Host "- Windows Server ISO: $IsoPath\WindowsServer2022.iso"
 Write-Host "- Windows 11 ISO:     $IsoPath\Win11.iso"
 Write-Host ""
-Write-Host "Danach ausführen:"
+Write-Host "Danach ausfuehren:"
 Write-Host "powershell.exe -ExecutionPolicy Bypass -File `"C:\Deploy\scripts\02-Create-InnerAutopilotVMs.ps1`""
 
 Stop-Transcript
