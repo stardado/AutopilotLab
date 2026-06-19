@@ -1,0 +1,19 @@
+{
+  "OuterDeployment": {
+    "ClusterName": "ML-CL-11",
+    "SwitchName": "XG_Link",
+    "TemplatePath": "C:\\ClusterStorage\\SAN02-VOL01-10K\\Vorlagen\\Autopilot-HV",
+    "TemplateFile": "Autopilot-HV-Server2022-Template.vhdx",
+    "FastStoragePath": "C:\\ClusterStorage\\SAN02-VOL02-SSD\\VMs\\",
+    "BackupStoragePath": "C:\\ClusterStorage\\NAS01-VOL04-7.2K-R5\\VMs\\"
+  },
+  "InnerLab": {
+    "SwitchName": "AP-LAN",
+    "Network": "10.10.0.0/24",
+    "Gateway": "10.10.0.1",
+    "DC": "10.10.0.10",
+    "Domain": "training.local",
+    "NetBIOS": "TRAINING",
+    "GroupTag": "HYBRID-TRAINING"
+  }
+}

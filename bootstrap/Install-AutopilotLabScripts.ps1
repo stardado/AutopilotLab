@@ -1,0 +1,184 @@
+# ============================================================
+# Install-AutopilotLabScripts.ps1
+#
+# Lädt alle Autopilot-Hybrid-Schulungsscripte aus Git zuerst
+# lokal nach C:\Deploy.
+#
+# Zielstruktur:
+#   C:\Deploy\
+#   ├── bootstrap\
+#   ├── scripts\
+#   ├── logs\
+#   └── temp\
+#
+# Optional:
+#   -RunPrepareHost startet danach direkt
+#   C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1
+# ============================================================
+
+param (
+    [string]$RawBaseUrl = "https://raw.githubusercontent.com/DEIN-ORG/AutopilotHybridLab/main/scripts",
+    [string]$DeployRoot = "C:\Deploy",
+    [string]$GitToken = "",
+    [ValidateSet("None", "GitHub", "GitLab")]
+    [string]$TokenType = "None",
+    [switch]$RunPrepareHost
+)
+
+$ErrorActionPreference = "Stop"
+
+$BootstrapPath = Join-Path $DeployRoot "bootstrap"
+$ScriptsPath   = Join-Path $DeployRoot "scripts"
+$LogsPath      = Join-Path $DeployRoot "logs"
+$TempPath      = Join-Path $DeployRoot "temp"
+$LogFile       = Join-Path $LogsPath "Install-AutopilotLabScripts.log"
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+foreach ($Path in @($DeployRoot, $BootstrapPath, $ScriptsPath, $LogsPath, $TempPath)) {
+    if (-not (Test-Path $Path)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
+}
+
+Start-Transcript -Path $LogFile -Force
+
+Write-Host ""
+Write-Host "Autopilot-Lab Bootstrap" -ForegroundColor Cyan
+Write-Host "Quelle: $RawBaseUrl"
+Write-Host "Ziel:   $DeployRoot"
+Write-Host ""
+
+$Headers = @{}
+
+if (-not [string]::IsNullOrWhiteSpace($GitToken)) {
+    switch ($TokenType) {
+        "GitHub" { $Headers["Authorization"] = "Bearer $GitToken" }
+        "GitLab" { $Headers["PRIVATE-TOKEN"] = $GitToken }
+        default { Write-Host "GitToken wurde angegeben, aber TokenType steht auf None. Token wird nicht verwendet." -ForegroundColor Yellow }
+    }
+}
+
+$Scripts = @(
+    "00-Deploy-Outer-HV-Environments.ps1",
+    "00-Prepare-AutopilotHV-Template.ps1",
+    "01-Prepare-NestedHyperVHost.ps1",
+    "02-Create-InnerAutopilotVMs.ps1",
+    "03-Setup-DC01-AutopilotHybrid.ps1",
+    "04-Delegate-IntuneConnectorRights.ps1",
+    "05-Get-AutopilotHash-OOBE.ps1",
+    "06-Join-WIN11-Normal-ToDomain.ps1"
+)
+
+function Get-GitRawFile {
+    param (
+        [string]$SourceUrl,
+        [string]$Destination,
+        [hashtable]$Headers
+    )
+
+    Write-Host "Lade:" -ForegroundColor Cyan
+    Write-Host "  $SourceUrl"
+    Write-Host "nach:"
+    Write-Host "  $Destination"
+
+    $Params = @{
+        Uri = $SourceUrl
+        OutFile = $Destination
+        UseBasicParsing = $true
+        ErrorAction = "Stop"
+    }
+
+    if ($Headers.Count -gt 0) {
+        $Params.Headers = $Headers
+    }
+
+    Invoke-WebRequest @Params
+
+    if (-not (Test-Path $Destination)) {
+        throw "Download fehlgeschlagen: $Destination"
+    }
+
+    $FileInfo = Get-Item $Destination
+
+    if ($FileInfo.Length -eq 0) {
+        throw "Geladene Datei ist leer: $Destination"
+    }
+
+    Write-Host "OK: $($FileInfo.Name) ($($FileInfo.Length) Bytes)" -ForegroundColor Green
+    Write-Host ""
+}
+
+foreach ($Script in $Scripts) {
+    $SourceUrl = "$RawBaseUrl/$Script"
+    $Destination = Join-Path $ScriptsPath $Script
+
+    Get-GitRawFile -SourceUrl $SourceUrl -Destination $Destination -Headers $Headers
+}
+
+$ReadmePath = Join-Path $DeployRoot "README-AutopilotLab.txt"
+
+$ReadmeContent = @"
+Autopilot Hybrid Schulungssystem
+
+Lokaler Deploy-Pfad:
+$DeployRoot
+
+Scripte:
+$ScriptsPath
+
+Logdateien:
+$LogsPath
+
+Empfohlene Reihenfolge auf dem Nested-Hyper-V:
+
+1. Host vorbereiten:
+   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\01-Prepare-NestedHyperVHost.ps1"
+
+2. ISOs nach D:\ISO kopieren:
+   D:\ISO\WindowsServer2022.iso
+   D:\ISO\Win11.iso
+
+3. Innere VMs erstellen:
+   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\02-Create-InnerAutopilotVMs.ps1"
+
+4. In DC01 ausführen:
+   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\03-Setup-DC01-AutopilotHybrid.ps1"
+
+5. Nach Installation des Intune Connectors in DC01:
+   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\04-Delegate-IntuneConnectorRights.ps1"
+
+6. Auf WIN11-OOBE im OOBE-Screen:
+   SHIFT + F10
+   powershell
+   powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\05-Get-AutopilotHash-OOBE.ps1
+
+Hinweis:
+WIN11-OOBE darf nicht fertig mit lokalem Benutzer eingerichtet werden.
+"@
+
+Set-Content -Path $ReadmePath -Value $ReadmeContent -Encoding UTF8 -Force
+
+Write-Host "README erstellt: $ReadmePath" -ForegroundColor Green
+
+if ($RunPrepareHost) {
+    $PrepareScript = Join-Path $ScriptsPath "01-Prepare-NestedHyperVHost.ps1"
+
+    if (-not (Test-Path $PrepareScript)) {
+        throw "Prepare-Script nicht gefunden: $PrepareScript"
+    }
+
+    Write-Host ""
+    Write-Host "Starte Host-Vorbereitung..." -ForegroundColor Cyan
+
+    & $PrepareScript
+}
+
+Write-Host ""
+Write-Host "Alle Scripte wurden nach C:\Deploy geladen." -ForegroundColor Green
+Write-Host ""
+Write-Host "Nächster Schritt:"
+Write-Host "powershell.exe -ExecutionPolicy Bypass -File `"C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1`""
+Write-Host ""
+
+Stop-Transcript
