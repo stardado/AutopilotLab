@@ -105,7 +105,7 @@ function Get-GitRawFile {
     Write-Host ""
 }
 
-function Repair-TemplateRegistryCode {
+function Repair-TemplateCode {
     param (
         [string]$TemplateScriptPath
     )
@@ -116,12 +116,12 @@ function Repair-TemplateRegistryCode {
 
     $Content = Get-Content -Path $TemplateScriptPath -Raw
 
-    $OldBlock = @'
+    $OldRegistryBlock = @'
 New-Item -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Force | Out-Null
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1 -Type DWord
 '@
 
-    $NewBlock = @'
+    $NewRegistryBlock = @'
 $ServerManagerKey = "HKLM:\SOFTWARE\Microsoft\ServerManager"
 
 if (-not (Test-Path $ServerManagerKey)) {
@@ -136,13 +136,26 @@ New-ItemProperty `
     -Force | Out-Null
 '@
 
-    if ($Content.Contains($OldBlock)) {
-        $Content = $Content.Replace($OldBlock, $NewBlock)
-        Set-Content -Path $TemplateScriptPath -Value $Content -Encoding UTF8 -Force
-        Write-Host "Template-Script Registry-Fix angewendet: $TemplateScriptPath" -ForegroundColor Green
-    } else {
-        Write-Host "Template-Script Registry-Fix nicht noetig oder bereits vorhanden." -ForegroundColor Yellow
+    if ($Content.Contains($OldRegistryBlock)) {
+        $Content = $Content.Replace($OldRegistryBlock, $NewRegistryBlock)
+        Write-Host "Template-Script Registry-Fix angewendet." -ForegroundColor Green
     }
+
+    $OldPolicyLine = 'Set-ExecutionPolicy RemoteSigned -Force'
+    $NewPolicyBlock = @'
+try {
+    Set-ExecutionPolicy RemoteSigned -Scope Process -Force -ErrorAction Stop
+} catch {
+    Write-Host "ExecutionPolicy konnte wegen Richtlinie nicht gesetzt werden. Script laeuft weiter." -ForegroundColor Yellow
+}
+'@
+
+    if ($Content.Contains($OldPolicyLine)) {
+        $Content = $Content.Replace($OldPolicyLine, $NewPolicyBlock)
+        Write-Host "Template-Script ExecutionPolicy-Fix angewendet." -ForegroundColor Green
+    }
+
+    Set-Content -Path $TemplateScriptPath -Value $Content -Encoding UTF8 -Force
 }
 
 foreach ($Script in $Scripts) {
@@ -152,7 +165,7 @@ foreach ($Script in $Scripts) {
     Get-GitRawFile -SourceUrl $SourceUrl -Destination $Destination -Headers $Headers
 }
 
-Repair-TemplateRegistryCode -TemplateScriptPath (Join-Path $ScriptsPath "00-Prepare-AutopilotHV-Template.ps1")
+Repair-TemplateCode -TemplateScriptPath (Join-Path $ScriptsPath "00-Prepare-AutopilotHV-Template.ps1")
 
 $ReadmePath = Join-Path $DeployRoot "README-AutopilotLab.txt"
 
