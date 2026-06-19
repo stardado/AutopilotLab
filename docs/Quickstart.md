@@ -25,11 +25,20 @@ V450 DEMO-AP-HV-04
 ## Auf jedem Nested-HV
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Path 'C:\Deploy\bootstrap' -Force | Out-Null; iwr -UseBasicParsing 'https://raw.githubusercontent.com/DEIN-ORG/AutopilotHybridLab/main/bootstrap/Install-AutopilotLabScripts.ps1' -OutFile 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1'; & 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1' -RunPrepareHost"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Path 'C:\Deploy\bootstrap' -Force | Out-Null; iwr -UseBasicParsing 'https://raw.githubusercontent.com/stardado/AutopilotLab/main/bootstrap/Install-AutopilotLabScripts.ps1' -OutFile 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1'; & 'C:\Deploy\bootstrap\Install-AutopilotLabScripts.ps1' -RunPrepareHost"
 ```
 
-Danach ISOs nach `D:\ISO` kopieren und innere VMs erstellen:
+Danach ISOs nach `C:\Deploy\ISO` kopieren:
+
+```text
+C:\Deploy\ISO\WindowsServer2022.iso
+C:\Deploy\ISO\Win11.iso
+```
+
+Innere VMs erstellen:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\02-Create-InnerAutopilotVMs.ps1
 ```
+
+Die VMs werden unter `C:\AutopilotLab` erstellt.
