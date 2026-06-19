@@ -1,7 +1,7 @@
 # ============================================================
 # Install-AutopilotLabScripts.ps1
 #
-# Lädt alle Autopilot-Hybrid-Schulungsscripte aus Git zuerst
+# Laedt alle Autopilot-Hybrid-Schulungsscripte aus Git zuerst
 # lokal nach C:\Deploy.
 #
 # Zielstruktur:
@@ -9,7 +9,8 @@
 #   ├── bootstrap\
 #   ├── scripts\
 #   ├── logs\
-#   └── temp\
+#   ├── temp\
+#   └── ISO\
 #
 # Optional:
 #   -RunPrepareHost startet danach direkt
@@ -17,7 +18,7 @@
 # ============================================================
 
 param (
-    [string]$RawBaseUrl = "https://raw.githubusercontent.com/DEIN-ORG/AutopilotHybridLab/main/scripts",
+    [string]$RawBaseUrl = "https://raw.githubusercontent.com/stardado/AutopilotLab/main/scripts",
     [string]$DeployRoot = "C:\Deploy",
     [string]$GitToken = "",
     [ValidateSet("None", "GitHub", "GitLab")]
@@ -31,11 +32,12 @@ $BootstrapPath = Join-Path $DeployRoot "bootstrap"
 $ScriptsPath   = Join-Path $DeployRoot "scripts"
 $LogsPath      = Join-Path $DeployRoot "logs"
 $TempPath      = Join-Path $DeployRoot "temp"
+$IsoPath       = Join-Path $DeployRoot "ISO"
 $LogFile       = Join-Path $LogsPath "Install-AutopilotLabScripts.log"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-foreach ($Path in @($DeployRoot, $BootstrapPath, $ScriptsPath, $LogsPath, $TempPath)) {
+foreach ($Path in @($DeployRoot, $BootstrapPath, $ScriptsPath, $LogsPath, $TempPath, $IsoPath)) {
     if (-not (Test-Path $Path)) {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
     }
@@ -47,6 +49,7 @@ Write-Host ""
 Write-Host "Autopilot-Lab Bootstrap" -ForegroundColor Cyan
 Write-Host "Quelle: $RawBaseUrl"
 Write-Host "Ziel:   $DeployRoot"
+Write-Host "ISO:    $IsoPath"
 Write-Host ""
 
 $Headers = @{}
@@ -130,14 +133,20 @@ $ScriptsPath
 Logdateien:
 $LogsPath
 
+ISO-Pfad:
+$IsoPath
+
+VM-Pfad:
+C:\AutopilotLab
+
 Empfohlene Reihenfolge auf dem Nested-Hyper-V:
 
 1. Host vorbereiten:
    powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\01-Prepare-NestedHyperVHost.ps1"
 
-2. ISOs nach D:\ISO kopieren:
-   D:\ISO\WindowsServer2022.iso
-   D:\ISO\Win11.iso
+2. ISOs nach C:\Deploy\ISO kopieren:
+   C:\Deploy\ISO\WindowsServer2022.iso
+   C:\Deploy\ISO\Win11.iso
 
 3. Innere VMs erstellen:
    powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\02-Create-InnerAutopilotVMs.ps1"
@@ -171,13 +180,13 @@ if ($RunPrepareHost) {
     Write-Host ""
     Write-Host "Starte Host-Vorbereitung..." -ForegroundColor Cyan
 
-    & $PrepareScript
+    & $PrepareScript -DeployRoot $DeployRoot -BasePath "C:\AutopilotLab" -IsoPath $IsoPath
 }
 
 Write-Host ""
 Write-Host "Alle Scripte wurden nach C:\Deploy geladen." -ForegroundColor Green
 Write-Host ""
-Write-Host "Nächster Schritt:"
+Write-Host "Naechster Schritt:"
 Write-Host "powershell.exe -ExecutionPolicy Bypass -File `"C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1`""
 Write-Host ""
 
