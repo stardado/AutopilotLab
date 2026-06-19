@@ -112,12 +112,54 @@ function Get-GitRawFile {
     Write-Host ""
 }
 
+function Repair-TemplateRegistryCode {
+    param (
+        [string]$TemplateScriptPath
+    )
+
+    if (-not (Test-Path $TemplateScriptPath)) {
+        return
+    }
+
+    $Content = Get-Content -Path $TemplateScriptPath -Raw
+
+    $OldBlock = @'
+New-Item -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name "DoNotOpenServerManagerAtLogon" -Value 1 -Type DWord
+'@
+
+    $NewBlock = @'
+$ServerManagerKey = "HKLM:\SOFTWARE\Microsoft\ServerManager"
+
+if (-not (Test-Path $ServerManagerKey)) {
+    New-Item -Path $ServerManagerKey | Out-Null
+}
+
+New-ItemProperty `
+    -Path $ServerManagerKey `
+    -Name "DoNotOpenServerManagerAtLogon" `
+    -Value 1 `
+    -PropertyType DWord `
+    -Force | Out-Null
+'@
+
+    if ($Content.Contains($OldBlock)) {
+        $Content = $Content.Replace($OldBlock, $NewBlock)
+        Set-Content -Path $TemplateScriptPath -Value $Content -Encoding UTF8 -Force
+        Write-Host "Template-Script Registry-Fix angewendet: $TemplateScriptPath" -ForegroundColor Green
+    } else {
+        Write-Host "Template-Script Registry-Fix nicht noetig oder bereits vorhanden." -ForegroundColor Yellow
+    }
+}
+
 foreach ($Script in $Scripts) {
     $SourceUrl = "$RawBaseUrl/$Script"
     $Destination = Join-Path $ScriptsPath $Script
 
     Get-GitRawFile -SourceUrl $SourceUrl -Destination $Destination -Headers $Headers
 }
+
+Repair-TemplateRegistryCode -TemplateScriptPath (Join-Path $ScriptsPath "00-Prepare-AutopilotHV-Template.ps1")
 
 $ReadmePath = Join-Path $DeployRoot "README-AutopilotLab.txt"
 
@@ -151,7 +193,7 @@ Empfohlene Reihenfolge auf dem Nested-Hyper-V:
 3. Innere VMs erstellen:
    powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\02-Create-InnerAutopilotVMs.ps1"
 
-4. In DC01 ausführen:
+4. In DC01 ausfuehren:
    powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\03-Setup-DC01-AutopilotHybrid.ps1"
 
 5. Nach Installation des Intune Connectors in DC01:
