@@ -4,17 +4,8 @@
 # Laedt alle Autopilot-Hybrid-Schulungsscripte aus Git zuerst
 # lokal nach C:\Deploy.
 #
-# Zielstruktur:
-#   C:\Deploy\
-#   ├── bootstrap\
-#   ├── scripts\
-#   ├── logs\
-#   ├── temp\
-#   └── ISO\
-#
-# Optional:
-#   -RunPrepareHost startet danach direkt
-#   C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1
+# Nur Download. Es wird nichts gestartet, solange -RunPrepareHost
+# nicht bewusst gesetzt wird.
 # ============================================================
 
 param (
@@ -65,12 +56,14 @@ if (-not [string]::IsNullOrWhiteSpace($GitToken)) {
 $Scripts = @(
     "00-Deploy-Outer-HV-Environments.ps1",
     "00-Prepare-AutopilotHV-Template.ps1",
+    "00-Start-VHDX-Template.ps1",
     "01-Prepare-NestedHyperVHost.ps1",
     "02-Create-InnerAutopilotVMs.ps1",
     "03-Setup-DC01-AutopilotHybrid.ps1",
     "04-Delegate-IntuneConnectorRights.ps1",
     "05-Get-AutopilotHash-OOBE.ps1",
-    "06-Join-WIN11-Normal-ToDomain.ps1"
+    "06-Join-WIN11-Normal-ToDomain.ps1",
+    "10-Start-DemoEnvironmentSetup.ps1"
 )
 
 function Get-GitRawFile {
@@ -181,31 +174,20 @@ $IsoPath
 VM-Pfad:
 C:\AutopilotLab
 
-Empfohlene Reihenfolge auf dem Nested-Hyper-V:
+Nur Download wurde ausgefuehrt.
 
-1. Host vorbereiten:
-   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\01-Prepare-NestedHyperVHost.ps1"
+VHDX/Golden-Image vorbereiten:
+powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\00-Start-VHDX-Template.ps1
 
-2. ISOs nach C:\Deploy\ISO kopieren:
-   C:\Deploy\ISO\WindowsServer2022.iso
-   C:\Deploy\ISO\Win11.iso
+VHDX/Golden-Image final mit Sysprep:
+powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\00-Start-VHDX-Template.ps1 -RunSysprep
 
-3. Innere VMs erstellen:
-   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\02-Create-InnerAutopilotVMs.ps1"
+Demo-/Schulungsumgebung starten:
+powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\10-Start-DemoEnvironmentSetup.ps1
 
-4. In DC01 ausfuehren:
-   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\03-Setup-DC01-AutopilotHybrid.ps1"
-
-5. Nach Installation des Intune Connectors in DC01:
-   powershell.exe -ExecutionPolicy Bypass -File "$ScriptsPath\04-Delegate-IntuneConnectorRights.ps1"
-
-6. Auf WIN11-OOBE im OOBE-Screen:
-   SHIFT + F10
-   powershell
-   powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\05-Get-AutopilotHash-OOBE.ps1
-
-Hinweis:
-WIN11-OOBE darf nicht fertig mit lokalem Benutzer eingerichtet werden.
+ISOs fuer Demo-Setup:
+C:\Deploy\ISO\WindowsServer2022.iso
+C:\Deploy\ISO\Win11.iso
 "@
 
 Set-Content -Path $ReadmePath -Value $ReadmeContent -Encoding UTF8 -Force
@@ -228,8 +210,13 @@ if ($RunPrepareHost) {
 Write-Host ""
 Write-Host "Alle Scripte wurden nach C:\Deploy geladen." -ForegroundColor Green
 Write-Host ""
-Write-Host "Naechster Schritt:"
-Write-Host "powershell.exe -ExecutionPolicy Bypass -File `"C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1`""
+Write-Host "Nur Download: abgeschlossen." -ForegroundColor Green
+Write-Host ""
+Write-Host "VHDX-Datei starten:"
+Write-Host "powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\00-Start-VHDX-Template.ps1"
+Write-Host ""
+Write-Host "Demo-Setup starten:"
+Write-Host "powershell.exe -ExecutionPolicy Bypass -File C:\Deploy\scripts\10-Start-DemoEnvironmentSetup.ps1"
 Write-Host ""
 
 Stop-Transcript
