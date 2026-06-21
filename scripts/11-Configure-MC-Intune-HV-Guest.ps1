@@ -29,6 +29,8 @@ param (
     [string]$TeamViewerInstallerPath = "C:\Deploy\Installers\TeamViewer_Host_Setup_x64.exe",
     [securestring]$TeamViewerPassword,
     [string]$TeamViewerPasswordPlain = "",
+    [int]$NetworkWaitTimeoutSeconds = 90,
+    [int]$NetworkWaitIntervalSeconds = 5,
     [switch]$SkipTeamViewer,
     [switch]$Restart
 )
@@ -197,11 +199,56 @@ function Test-NameResolution {
     }
 }
 
+function Wait-NetworkReady {
+    param (
+        [string]$Gateway,
+        [string]$DnsTestName = "download.teamviewer.com",
+        [int]$TimeoutSeconds = 90,
+        [int]$IntervalSeconds = 5
+    )
+
+    Write-Host ""
+    Write-Host "Warte auf Netzwerk/DNS..." -ForegroundColor Cyan
+    Write-Host "Gateway-Test: $Gateway"
+    Write-Host "DNS-Test: $DnsTestName"
+
+    $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $Attempt = 0
+
+    do {
+        $Attempt++
+        $GatewayOk = $false
+        $DnsOk = $false
+
+        try {
+            $GatewayOk = Test-Connection -ComputerName $Gateway -Count 1 -Quiet -ErrorAction SilentlyContinue
+        } catch {
+            $GatewayOk = $false
+        }
+
+        $DnsOk = Test-NameResolution -Name $DnsTestName
+
+        if ($GatewayOk -and $DnsOk) {
+            Write-Host "Netzwerk bereit nach Versuch $Attempt." -ForegroundColor Green
+            return $true
+        }
+
+        Write-Host "Noch nicht bereit. Versuch $Attempt - Gateway: $GatewayOk, DNS: $DnsOk" -ForegroundColor Yellow
+        Start-Sleep -Seconds $IntervalSeconds
+    } while ((Get-Date) -lt $Deadline)
+
+    Write-Host "Netzwerk-Wartezeit abgelaufen. Fahre trotzdem fort." -ForegroundColor Yellow
+    return $false
+}
+
 function Install-TeamViewerHost {
     param (
         [string]$InstallerUrl,
         [string]$InstallerPath,
-        [string]$PasswordPlain
+        [string]$PasswordPlain,
+        [string]$Gateway,
+        [int]$NetworkWaitTimeoutSeconds,
+        [int]$NetworkWaitIntervalSeconds
     )
 
     Write-Host "" 
@@ -212,14 +259,11 @@ function Install-TeamViewerHost {
         Write-Host $InstallerUrl
 
         $InstallerHost = ([uri]$InstallerUrl).Host
-        if (-not (Test-NameResolution -Name $InstallerHost)) {
-            Write-Host "Namensaufloesung fuer $InstallerHost fehlgeschlagen. Setze DNS-Fallback 1.1.1.1 und 8.8.8.8..." -ForegroundColor Yellow
-            $UpAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
-            foreach ($UpAdapter in $UpAdapters) {
-                Set-DnsClientServerAddress -InterfaceIndex $UpAdapter.ifIndex -ServerAddresses @("1.1.1.1", "8.8.8.8") -ErrorAction SilentlyContinue
-            }
-            Start-Sleep -Seconds 2
-        }
+        Wait-NetworkReady `
+            -Gateway $Gateway `
+            -DnsTestName $InstallerHost `
+            -TimeoutSeconds $NetworkWaitTimeoutSeconds `
+            -IntervalSeconds $NetworkWaitIntervalSeconds | Out-Null
 
         Invoke-WebRequest `
             -UseBasicParsing `
@@ -313,6 +357,12 @@ try {
         -Gateway $Gateway `
         -DnsServers $DnsServers
 
+    Wait-NetworkReady `
+        -Gateway $Gateway `
+        -DnsTestName "download.teamviewer.com" `
+        -TimeoutSeconds $NetworkWaitTimeoutSeconds `
+        -IntervalSeconds $NetworkWaitIntervalSeconds | Out-Null
+
     $NeedsRestart = $false
 
     if ($env:COMPUTERNAME -ne $TargetHostName) {
@@ -335,7 +385,10 @@ try {
         Install-TeamViewerHost `
             -InstallerUrl $TeamViewerInstallerUrl `
             -InstallerPath $TeamViewerInstallerPath `
-            -PasswordPlain $TeamViewerPasswordPlain
+            -PasswordPlain $TeamViewerPasswordPlain `
+            -Gateway $Gateway `
+            -NetworkWaitTimeoutSeconds $NetworkWaitTimeoutSeconds `
+            -NetworkWaitIntervalSeconds $NetworkWaitIntervalSeconds
 
         Clear-Variable TeamViewerPasswordPlain -ErrorAction SilentlyContinue
     } else {
