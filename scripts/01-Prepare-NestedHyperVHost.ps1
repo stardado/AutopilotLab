@@ -3,6 +3,13 @@
 #
 # Bereitet den Nested-Hyper-V-Host vor.
 #
+# Wichtig:
+# - Kein interner NAT-Switch mehr.
+# - AP-LAN wird als externer vSwitch auf dem bestehenden
+#   Management-/Ethernet-Adapter erstellt.
+# - Die bereits gesetzte Host-IP wird vorher gesichert und
+#   danach auf vEthernet(AP-LAN) wiederhergestellt.
+#
 # Scripte/Logs/ISOs:
 #   C:\Deploy
 #   C:\Deploy\ISO
@@ -13,10 +20,7 @@
 
 param (
     [string]$LabSwitchName = "AP-LAN",
-    [string]$LabGatewayIp = "10.10.0.1",
-    [int]$LabPrefixLength = 24,
-    [string]$LabNatPrefix = "10.10.0.0/24",
-    [string]$LabNatName = "NAT-AP-LAN",
+    [string]$ExternalAdapterName = "",
     [string]$DataDriveLetter = "",
     [string]$DeployRoot = "C:\Deploy",
     [string]$BasePath = "C:\AutopilotLab",
@@ -73,6 +77,101 @@ function Install-HyperVFeature {
     throw "Hyper-V konnte nicht installiert werden. Weder Install-WindowsFeature noch passende WindowsOptionalFeature wurden gefunden."
 }
 
+function Get-PrimaryNetworkAdapter {
+    param ([string]$PreferredName)
+
+    if (-not [string]::IsNullOrWhiteSpace($PreferredName)) {
+        $Adapter = Get-NetAdapter -Name $PreferredName -ErrorAction SilentlyContinue
+        if ($Adapter) {
+            return $Adapter
+        }
+
+        throw "Angegebener Netzwerkadapter wurde nicht gefunden: $PreferredName"
+    }
+
+    $DefaultRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+        Sort-Object RouteMetric, InterfaceMetric |
+        Select-Object -First 1
+
+    if ($DefaultRoute) {
+        $Adapter = Get-NetAdapter -InterfaceIndex $DefaultRoute.InterfaceIndex -ErrorAction SilentlyContinue
+        if ($Adapter -and $Adapter.Name -notlike "vEthernet*") {
+            return $Adapter
+        }
+    }
+
+    $UpAdapter = Get-NetAdapter -Physical | Where-Object {
+        $_.Status -eq "Up" -and $_.Name -notlike "vEthernet*"
+    } | Sort-Object ifIndex | Select-Object -First 1
+
+    if ($UpAdapter) {
+        return $UpAdapter
+    }
+
+    throw "Kein geeigneter physischer Netzwerkadapter fuer den externen vSwitch gefunden."
+}
+
+function Get-AdapterIPv4Config {
+    param ([Microsoft.Management.Infrastructure.CimInstance]$Adapter)
+
+    $IPv4 = Get-NetIPAddress -InterfaceIndex $Adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -notlike "169.254*" } |
+        Select-Object -First 1
+
+    $Gateway = Get-NetRoute -InterfaceIndex $Adapter.ifIndex -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+        Sort-Object RouteMetric |
+        Select-Object -First 1
+
+    $Dns = Get-DnsClientServerAddress -InterfaceIndex $Adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+
+    return [pscustomobject]@{
+        IPAddress = if ($IPv4) { $IPv4.IPAddress } else { $null }
+        PrefixLength = if ($IPv4) { $IPv4.PrefixLength } else { $null }
+        Gateway = if ($Gateway) { $Gateway.NextHop } else { $null }
+        DnsServers = if ($Dns) { $Dns.ServerAddresses } else { @() }
+    }
+}
+
+function Restore-AdapterIPv4Config {
+    param (
+        [string]$InterfaceAlias,
+        [object]$Config
+    )
+
+    if (-not $Config -or [string]::IsNullOrWhiteSpace($Config.IPAddress)) {
+        Write-Host "Keine statische IPv4-Konfiguration zum Wiederherstellen gefunden." -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host "Stelle Host-IP auf $InterfaceAlias wieder her..." -ForegroundColor Cyan
+    Write-Host "IP: $($Config.IPAddress)/$($Config.PrefixLength)"
+    Write-Host "Gateway: $($Config.Gateway)"
+    Write-Host "DNS: $($Config.DnsServers -join ', ')"
+
+    Get-NetIPAddress -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+
+    Get-NetRoute -InterfaceAlias $InterfaceAlias -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+        Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+
+    if ([string]::IsNullOrWhiteSpace($Config.Gateway)) {
+        New-NetIPAddress `
+            -InterfaceAlias $InterfaceAlias `
+            -IPAddress $Config.IPAddress `
+            -PrefixLength $Config.PrefixLength | Out-Null
+    } else {
+        New-NetIPAddress `
+            -InterfaceAlias $InterfaceAlias `
+            -IPAddress $Config.IPAddress `
+            -PrefixLength $Config.PrefixLength `
+            -DefaultGateway $Config.Gateway | Out-Null
+    }
+
+    if ($Config.DnsServers -and $Config.DnsServers.Count -gt 0) {
+        Set-DnsClientServerAddress -InterfaceAlias $InterfaceAlias -ServerAddresses $Config.DnsServers
+    }
+}
+
 $LogPath = Join-Path $DeployRoot "logs"
 if (-not (Test-Path $LogPath)) {
     New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
@@ -85,8 +184,6 @@ Write-Host "Bereite Nested-Hyper-V-Host vor..." -ForegroundColor Cyan
 
 # ============================================================
 # Optionale Datenplatte vorbereiten
-# Standard ist aus, weil VM-Daten auf C:\AutopilotLab liegen.
-# Nur nutzen, wenn bewusst ein Laufwerksbuchstabe angegeben wird.
 # ============================================================
 
 if (-not [string]::IsNullOrWhiteSpace($DataDriveLetter)) {
@@ -148,52 +245,43 @@ Write-Host "Hyper-V ist installiert oder das Hyper-V-Modul ist verfuegbar." -For
 
 Import-Module Hyper-V -ErrorAction Stop
 
-if (-not (Get-VMSwitch -Name $LabSwitchName -ErrorAction SilentlyContinue)) {
-    Write-Host "Erstelle internen vSwitch: $LabSwitchName" -ForegroundColor Cyan
-    New-VMSwitch -Name $LabSwitchName -SwitchType Internal | Out-Null
-} else {
-    Write-Host "vSwitch existiert bereits: $LabSwitchName" -ForegroundColor Green
-}
+$ExistingSwitch = Get-VMSwitch -Name $LabSwitchName -ErrorAction SilentlyContinue
 
-$InterfaceAlias = "vEthernet ($LabSwitchName)"
+if ($ExistingSwitch) {
+    Write-Host "vSwitch existiert bereits: $LabSwitchName ($($ExistingSwitch.SwitchType))" -ForegroundColor Green
 
-$ExistingIps = Get-NetIPAddress -InterfaceAlias $InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue
-
-foreach ($Ip in $ExistingIps) {
-    if ($Ip.IPAddress -ne $LabGatewayIp) {
-        Remove-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $Ip.IPAddress -Confirm:$false -ErrorAction SilentlyContinue
+    if ($ExistingSwitch.SwitchType -ne "External") {
+        Write-Host "WARNUNG: $LabSwitchName ist kein externer Switch. Fuer Internet der inneren VMs sollte er External sein." -ForegroundColor Yellow
     }
-}
-
-if (-not (Get-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $LabGatewayIp -ErrorAction SilentlyContinue)) {
-    Write-Host "Setze Gateway-IP $LabGatewayIp auf $InterfaceAlias" -ForegroundColor Cyan
-    New-NetIPAddress -InterfaceAlias $InterfaceAlias -IPAddress $LabGatewayIp -PrefixLength $LabPrefixLength | Out-Null
 } else {
-    Write-Host "Gateway-IP ist bereits gesetzt: $LabGatewayIp" -ForegroundColor Green
-}
+    $PrimaryAdapter = Get-PrimaryNetworkAdapter -PreferredName $ExternalAdapterName
+    $HostIpConfig = Get-AdapterIPv4Config -Adapter $PrimaryAdapter
 
-$ExistingNat = Get-NetNat -Name $LabNatName -ErrorAction SilentlyContinue
+    Write-Host "Erstelle externen vSwitch: $LabSwitchName" -ForegroundColor Cyan
+    Write-Host "Adapter: $($PrimaryAdapter.Name)"
 
-if (-not $ExistingNat) {
-    Write-Host "Erstelle NAT: $LabNatName fuer $LabNatPrefix" -ForegroundColor Cyan
-    New-NetNat -Name $LabNatName -InternalIPInterfaceAddressPrefix $LabNatPrefix | Out-Null
-} else {
-    Write-Host "NAT existiert bereits: $LabNatName" -ForegroundColor Green
+    New-VMSwitch `
+        -Name $LabSwitchName `
+        -NetAdapterName $PrimaryAdapter.Name `
+        -AllowManagementOS $true | Out-Null
+
+    Start-Sleep -Seconds 5
+
+    $VSwitchInterfaceAlias = "vEthernet ($LabSwitchName)"
+    Restore-AdapterIPv4Config -InterfaceAlias $VSwitchInterfaceAlias -Config $HostIpConfig
 }
 
 Write-Host ""
 Write-Host "Nested-Hyper-V-Host ist vorbereitet." -ForegroundColor Green
 Write-Host "Deploy-Pfad: $DeployRoot"
-Write-Host "Interner Lab-Switch: $LabSwitchName"
-Write-Host "Gateway: $LabGatewayIp"
-Write-Host "NAT: $LabNatName"
+Write-Host "Externer Lab-Switch: $LabSwitchName"
 Write-Host "VM-Pfad: $BasePath\VMs"
 Write-Host "VHDX-Pfad: $BasePath\VHDX"
 Write-Host "ISO-Pfad: $IsoPath"
 Write-Host ""
 Write-Host "Bitte ISOs hier ablegen:"
-Write-Host "- Windows Server ISO: $IsoPath\WindowsServer2022.iso"
-Write-Host "- Windows 11 ISO:     $IsoPath\Win11.iso"
+Write-Host "- Windows Server 2025 ISO: $IsoPath\WindowsServer2025.iso"
+Write-Host "- Windows 11 ISO:          $IsoPath\Win11.iso"
 Write-Host ""
 Write-Host "Danach ausfuehren:"
 Write-Host "powershell.exe -ExecutionPolicy Bypass -File `"C:\Deploy\scripts\02-Create-InnerAutopilotVMs.ps1`""
