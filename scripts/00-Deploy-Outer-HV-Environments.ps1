@@ -41,7 +41,7 @@ function Read-NumberInRange {
 $VLAN = Read-NumberInRange -Prompt "VLAN ID" -Min 450 -Max 565
 $EnvironmentCount = Read-NumberInRange -Prompt "Wie viele Schulungsumgebungen sollen erstellt werden? 1-7" -Min 1 -Max 7
 
-# Ressourcen für jede Nested-Hyper-V VM
+# Ressourcen fuer jede Nested-Hyper-V VM
 $HVMemory = 64GB
 $HVCoreCount = 18
 
@@ -50,9 +50,9 @@ $vSANschnellPath = "C:\ClusterStorage\SAN02-VOL02-SSD\VMs\"
 $vNASBackupPath  = "C:\ClusterStorage\NAS01-VOL04-7.2K-R5\VMs\"
 $ConfigPath      = "C:\ClusterStorage\SAN02-VOL02-SSD\VMs\"
 
-# Eigenes Template für Autopilot-HV
-$ServerTemplatePath = "C:\ClusterStorage\SAN02-VOL01-10K\Vorlagen\Autopilot-HV"
-$ServerTemplate = "Autopilot-HV-Server2022-Template.vhdx"
+# Template-VHDX fuer Autopilot-HV
+$ServerTemplatePath = "C:\ClusterStorage\SAN02-VOL01-10K\Vorlagen"
+$ServerTemplate = "WindowsServer2025Datacenter-100GB-Thin.vhdx"
 
 $ClusterName = "ML-CL-11"
 $SwitchName = "XG_Link"
@@ -85,7 +85,7 @@ function Get-HyperVHostForVLAN {
     } elseif ($VLAN -ge 559 -and $VLAN -le 565) {
         return "ML-HV-21"
     } else {
-        throw "Ungültige VLAN ID für Hyper-V Host Zuweisung: $VLAN"
+        throw "Ungueltige VLAN ID fuer Hyper-V Host Zuweisung: $VLAN"
     }
 }
 
@@ -124,13 +124,14 @@ try {
     $HVHost = Get-HyperVHostForVLAN -VLAN $VLAN
 
     Write-Host ""
-    Write-Host "Deployment-Übersicht" -ForegroundColor Cyan
+    Write-Host "Deployment-Uebersicht" -ForegroundColor Cyan
     Write-Host "VLAN: $VLAN"
     Write-Host "Anzahl Schulungsumgebungen: $EnvironmentCount"
     Write-Host "Zielhost: $HVHost"
     Write-Host "RAM je Umgebung: $($HVMemory / 1GB) GB"
     Write-Host "CPU-Kerne je Umgebung: $HVCoreCount"
     Write-Host "Gesamt Start-RAM: $(($HVMemory / 1GB) * $EnvironmentCount) GB"
+    Write-Host "Template: $ServerTemplatePath\$ServerTemplate"
     Write-Host ""
 } catch {
     Write-Error $_
@@ -166,7 +167,7 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
     Write-Host "============================================================" -ForegroundColor DarkGray
 
     try {
-        Write-Host "Kopiere Servertemplate für $HVName..." -ForegroundColor Cyan
+        Write-Host "Kopiere Servertemplate fuer $HVName..." -ForegroundColor Cyan
 
         if (-not (Test-Path $HVFolder)) {
             New-Item -Path $HVFolder -ItemType Directory -Force | Out-Null
@@ -183,10 +184,10 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 
             Rename-Item -Path $CopiedTemplate -NewName "$HVName.vhdx"
         } else {
-            Write-Host "Ziel-VHDX existiert bereits, Kopieren wird übersprungen: $HVVhdPath" -ForegroundColor Yellow
+            Write-Host "Ziel-VHDX existiert bereits, Kopieren wird uebersprungen: $HVVhdPath" -ForegroundColor Yellow
         }
     } catch {
-        Write-Error "Fehler beim Kopieren oder Umbenennen des Servertemplates für $HVName : $_"
+        Write-Error "Fehler beim Kopieren oder Umbenennen des Servertemplates fuer $HVName : $_"
         exit 1
     }
 
@@ -229,7 +230,7 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
             }
 
             if (Get-VM -Name $HVName -ErrorAction SilentlyContinue) {
-                Write-Host "VM existiert bereits auf $env:COMPUTERNAME, wird übersprungen: $HVName" -ForegroundColor Yellow
+                Write-Host "VM existiert bereits auf $env:COMPUTERNAME, wird uebersprungen: $HVName" -ForegroundColor Yellow
                 return
             }
 
@@ -271,15 +272,15 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 
             Add-VMHardDiskDrive -VMName $HVName -Path $BackupDisk
 
-            Set-VM -Name $HVName -Notes "Autopilot Hybrid Schulungssystem. Auf diesem Nested-Hyper-V laufen später DC01, WIN11-Normal und WIN11-OOBE."
+            Set-VM -Name $HVName -Notes "Autopilot Hybrid Schulungssystem. Auf diesem Nested-Hyper-V laufen spaeter DC01, WIN11-Normal und WIN11-OOBE."
 
             Start-VM $HVName
 
             try {
                 Add-ClusterVirtualMachineRole -Cluster $ClusterName -Name $HVName -VirtualMachine $HVName -ErrorAction Stop | Out-Null
-                Write-Host "$HVName wurde als Clusterrolle hinzugefügt."
+                Write-Host "$HVName wurde als Clusterrolle hinzugefuegt."
             } catch {
-                Write-Host "Hinweis: Clusterrolle für $HVName konnte nicht erstellt werden oder existiert bereits: $_" -ForegroundColor Yellow
+                Write-Host "Hinweis: Clusterrolle fuer $HVName konnte nicht erstellt werden oder existiert bereits: $_" -ForegroundColor Yellow
             }
 
             Write-Host "$HVName wurde erfolgreich erstellt und als Nested Hyper-V vorbereitet." -ForegroundColor Green
@@ -300,7 +301,7 @@ Write-Host "Anzahl Schulungsumgebungen: $EnvironmentCount"
 Write-Host "Zielhost: $HVHost"
 Write-Host "============================================================" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "Erstellte bzw. geprüfte Umgebungen:" -ForegroundColor Cyan
+Write-Host "Erstellte bzw. gepruefte Umgebungen:" -ForegroundColor Cyan
 
 for ($i = 1; $i -le $EnvironmentCount; $i++) {
     $EnvironmentNumber = $i.ToString("00")
@@ -308,8 +309,8 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 }
 
 Write-Host ""
-Write-Host "Nächster Schritt je Umgebung:"
+Write-Host "Naechster Schritt je Umgebung:"
 Write-Host "1. Auf dem jeweiligen Nested-Hyper-V anmelden"
 Write-Host "2. Bootstrap nach C:\Deploy laden"
-Write-Host "3. C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1 ausführen"
+Write-Host "3. C:\Deploy\scripts\01-Prepare-NestedHyperVHost.ps1 ausfuehren"
 Write-Host "4. Danach innere VMs erstellen: DC01, WIN11-Normal, WIN11-OOBE"
