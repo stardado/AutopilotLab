@@ -14,7 +14,7 @@
 # - V561 MC-Intune-HV-07
 #
 # Jede VM bekommt ein eigenes VLAN.
-# Keine XGS/Firewall.
+# Keine XGS/Firewall. Keine Backup-Platte.
 # ============================================================
 
 param (
@@ -27,11 +27,9 @@ param (
     [string]$TemplatePath = "C:\ClusterStorage\SAN02-VOL01-10K\Vorlagen",
     [string]$TemplateFile = "WindowsServer2025Datacenter-100GB-Thin.vhdx",
     [string]$VmStoragePath = "C:\ClusterStorage\SAN02-VOL02-SSD\VMs\",
-    [string]$BackupStoragePath = "C:\ClusterStorage\NAS01-VOL04-7.2K-R5\VMs\",
-    [int64]$MemoryStartupBytes = 64GB,
-    [int]$CpuCount = 18,
-    [int64]$SystemDiskSize = 250GB,
-    [int64]$BackupDiskSize = 1TB,
+    [int64]$MemoryStartupBytes = 28GB,
+    [int]$CpuCount = 16,
+    [int64]$SystemDiskSize = 500GB,
     [switch]$NoClusterRole,
     [switch]$NoStart
 )
@@ -115,10 +113,11 @@ Write-Host "End-VLAN: $EndVLAN"
 Write-Host "Anzahl: $EnvironmentCount"
 Write-Host "Template: $TemplateFullPath"
 Write-Host "VM-Storage: $VmStoragePath"
-Write-Host "Backup-Storage: $BackupStoragePath"
 Write-Host "Switch: $SwitchName"
 Write-Host "RAM je VM: $($MemoryStartupBytes / 1GB) GB"
 Write-Host "CPU je VM: $CpuCount"
+Write-Host "C-Laufwerk je VM: $($SystemDiskSize / 1GB) GB"
+Write-Host "Backup-Platte: nein"
 Write-Host ""
 
 Write-Host "Geplant:" -ForegroundColor Cyan
@@ -142,9 +141,6 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 
     $HVFolder = Join-Path $VmStoragePath $HVName
     $HVVhdPath = Join-Path $HVFolder "$HVName.vhdx"
-
-    $BackupFolder = Join-Path $BackupStoragePath $HVName
-    $BackupDisk = Join-Path $BackupFolder "$HVName-Backup-1.vhdx"
 
     $MACIP = 100 + $i
     $HVMAC = Generate-MACAddress -VLAN $EnvironmentVLAN -MACIP $MACIP
@@ -197,16 +193,6 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 
     $VmHardDiskToResize = Get-VMHardDiskDrive -VMName $HVName | Select-Object -First 1
     Resize-VHD -Path $VmHardDiskToResize.Path -SizeBytes $SystemDiskSize
-
-    if (-not (Test-Path $BackupFolder)) {
-        New-Item -Path $BackupFolder -ItemType Directory -Force | Out-Null
-    }
-
-    if (-not (Test-Path $BackupDisk)) {
-        New-VHD -Path $BackupDisk -SizeBytes $BackupDiskSize -Dynamic | Out-Null
-    }
-
-    Add-VMHardDiskDrive -VMName $HVName -Path $BackupDisk
 
     Set-VM -Name $HVName -Notes "MC Intune Schulungssystem. Nested-Hyper-V Host fuer DC01, WIN11-Normal und WIN11-OOBE. VLAN $EnvironmentVLAN."
 
