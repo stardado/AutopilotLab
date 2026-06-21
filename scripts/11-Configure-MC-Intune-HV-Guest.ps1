@@ -24,7 +24,7 @@ param (
     [int]$IpHostOctet = 50,
     [int]$GatewayHostOctet = 254,
     [int]$PrefixLength = 24,
-    [string[]]$DnsServers = @(),
+    [string[]]$DnsServers = @("1.1.1.1", "8.8.8.8"),
     [string]$TeamViewerInstallerUrl = "https://download.teamviewer.com/download/TeamViewer_Host_Setup_x64.exe",
     [string]$TeamViewerInstallerPath = "C:\Deploy\Installers\TeamViewer_Host_Setup_x64.exe",
     [securestring]$TeamViewerPassword,
@@ -88,7 +88,6 @@ function Get-McIntuneIdentityFromMac {
     )
 
     # Erwartetes Schema aus dem Deployment:
-    # Generate-MACAddress:
     # VLAN 555, MACIP 101 -> 00:15:5D:55:51:01
     # VLAN 556, MACIP 102 -> 00:15:5D:55:61:02
     # VLAN 561, MACIP 107 -> 00:15:5D:56:11:07
@@ -177,7 +176,7 @@ function Set-StaticIPv4Configuration {
         -DefaultGateway $Gateway | Out-Null
 
     if (-not $DnsServers -or $DnsServers.Count -eq 0) {
-        $DnsServers = @($Gateway)
+        $DnsServers = @("1.1.1.1", "8.8.8.8")
     }
 
     Set-DnsClientServerAddress `
@@ -185,6 +184,17 @@ function Set-StaticIPv4Configuration {
         -ServerAddresses $DnsServers
 
     Write-Host "DNS: $($DnsServers -join ', ')"
+}
+
+function Test-NameResolution {
+    param ([string]$Name)
+
+    try {
+        [System.Net.Dns]::GetHostAddresses($Name) | Out-Null
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Install-TeamViewerHost {
@@ -200,6 +210,16 @@ function Install-TeamViewerHost {
     if (-not (Test-Path $InstallerPath)) {
         Write-Host "Lade TeamViewer Host Installer..." -ForegroundColor Cyan
         Write-Host $InstallerUrl
+
+        $InstallerHost = ([uri]$InstallerUrl).Host
+        if (-not (Test-NameResolution -Name $InstallerHost)) {
+            Write-Host "Namensaufloesung fuer $InstallerHost fehlgeschlagen. Setze DNS-Fallback 1.1.1.1 und 8.8.8.8..." -ForegroundColor Yellow
+            $UpAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
+            foreach ($UpAdapter in $UpAdapters) {
+                Set-DnsClientServerAddress -InterfaceIndex $UpAdapter.ifIndex -ServerAddresses @("1.1.1.1", "8.8.8.8") -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 2
+        }
 
         Invoke-WebRequest `
             -UseBasicParsing `
