@@ -19,7 +19,7 @@ param (
     [string]$BasePath = "C:\AutopilotLab",
     [string]$VMPath = "C:\AutopilotLab\VMs",
     [string]$VHDXPath = "C:\AutopilotLab\VHDX",
-    [string]$ServerIso = "C:\Deploy\ISO\WindowsServer2022.iso",
+    [string]$ServerIso = "C:\Deploy\ISO\WindowsServer2025.iso",
     [string]$Win11Iso = "C:\Deploy\ISO\Win11.iso"
 )
 
@@ -54,7 +54,7 @@ $VMDefinitions = @(
         Cpu = 2
         VhdSize = 100GB
         EnableTpm = $false
-        Notes = "Domain Controller, DNS, DHCP und Intune Connector fuer Autopilot Hybrid Schulung."
+        Notes = "Domain Controller, DNS, DHCP und Intune Connector fuer Autopilot Hybrid Schulung. Basis: Windows Server 2025."
     },
     @{
         Name = "WIN11-Normal"
@@ -82,6 +82,8 @@ $VMDefinitions = @(
 
 Write-Host ""
 Write-Host "Erstelle innere Autopilot-Lab-VMs..." -ForegroundColor Cyan
+Write-Host "Server-ISO: $ServerIso"
+Write-Host "Windows-11-ISO: $Win11Iso"
 
 Assert-HyperVReady
 
@@ -90,7 +92,7 @@ if (-not (Get-VMSwitch -Name $LabSwitchName -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Test-Path $ServerIso)) {
-    throw "Windows Server ISO nicht gefunden: $ServerIso"
+    throw "Windows Server 2025 ISO nicht gefunden: $ServerIso"
 }
 
 if (-not (Test-Path $Win11Iso)) {
@@ -166,7 +168,7 @@ Write-Host ""
 Write-Host "Innere VMs wurden erstellt." -ForegroundColor Green
 Write-Host ""
 Write-Host "Installationsreihenfolge:"
-Write-Host "1. DC01 installieren"
+Write-Host "1. DC01 mit Windows Server 2025 installieren"
 Write-Host "2. In DC01: 03-Setup-DC01-AutopilotHybrid.ps1 ausfuehren"
 Write-Host "3. WIN11-Normal normal installieren"
 Write-Host "4. WIN11-OOBE nur bis OOBE installieren und dort stoppen"
