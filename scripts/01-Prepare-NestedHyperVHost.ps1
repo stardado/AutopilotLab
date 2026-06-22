@@ -9,6 +9,8 @@
 #   Management-/Ethernet-Adapter erstellt.
 # - Die bereits gesetzte Host-IP wird vorher gesichert und
 #   danach auf vEthernet(AP-LAN) wiederhergestellt.
+# - Datei-/Druckerfreigabe und Admin-Share-Zugriff werden aktiviert,
+#   damit WIN11-OOBE den Autopilot-Hash auf den .50-Host kopieren kann.
 #
 # Scripte/Logs/ISOs:
 #   C:\Deploy
@@ -172,6 +174,45 @@ function Restore-AdapterIPv4Config {
     }
 }
 
+function Enable-OobeHashCopyTarget {
+    Write-Host ""
+    Write-Host "Aktiviere Datei-/Druckerfreigabe fuer Autopilot-Hash-Kopie..." -ForegroundColor Cyan
+
+    try {
+        Set-Service -Name LanmanServer -StartupType Automatic -ErrorAction SilentlyContinue
+        Start-Service -Name LanmanServer -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host "Server-Dienst konnte nicht gestartet/geprueft werden: $_" -ForegroundColor Yellow
+    }
+
+    $FirewallGroups = @(
+        "Datei- und Druckerfreigabe",
+        "File and Printer Sharing"
+    )
+
+    foreach ($FirewallGroup in $FirewallGroups) {
+        try {
+            Enable-NetFirewallRule -DisplayGroup $FirewallGroup -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "Firewallgruppe aktiviert/geprueft: $FirewallGroup" -ForegroundColor Green
+        } catch {
+            Write-Host "Firewallgruppe konnte nicht gesetzt werden: $FirewallGroup - $_" -ForegroundColor Yellow
+        }
+    }
+
+    try {
+        New-ItemProperty `
+            -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+            -Name "LocalAccountTokenFilterPolicy" `
+            -Value 1 `
+            -PropertyType DWord `
+            -Force | Out-Null
+
+        Write-Host "LocalAccountTokenFilterPolicy wurde gesetzt." -ForegroundColor Green
+    } catch {
+        Write-Host "LocalAccountTokenFilterPolicy konnte nicht gesetzt werden: $_" -ForegroundColor Yellow
+    }
+}
+
 $LogPath = Join-Path $DeployRoot "logs"
 if (-not (Test-Path $LogPath)) {
     New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
@@ -234,6 +275,8 @@ foreach ($Folder in $Folders) {
     }
 }
 
+Enable-OobeHashCopyTarget
+
 if (-not (Test-HyperVInstalled)) {
     Write-Host "Hyper-V ist nicht installiert. Installation/Aktivierung wird gestartet..." -ForegroundColor Yellow
     Stop-Transcript
@@ -278,6 +321,7 @@ Write-Host "Externer Lab-Switch: $LabSwitchName"
 Write-Host "VM-Pfad: $BasePath\VMs"
 Write-Host "VHDX-Pfad: $BasePath\VHDX"
 Write-Host "ISO-Pfad: $IsoPath"
+Write-Host "Autopilot-Hash-Ziel: C:\Users\Administrator\Desktop auf diesem Host"
 Write-Host ""
 Write-Host "Bitte ISOs hier ablegen:"
 Write-Host "- Windows Server 2025 ISO: $IsoPath\WindowsServer2025.iso"
