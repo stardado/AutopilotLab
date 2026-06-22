@@ -11,6 +11,11 @@
 #
 # ISOs:
 #   C:\Deploy\ISO
+#
+# CPU-Zuordnung:
+# - DC01: 8 vCPU
+# - WIN11-Normal: 4 vCPU
+# - WIN11-OOBE: 4 vCPU
 # ============================================================
 
 param (
@@ -51,10 +56,10 @@ $VMDefinitions = @(
         Memory = 4GB
         MinMemory = 2GB
         MaxMemory = 8GB
-        Cpu = 2
+        Cpu = 8
         VhdSize = 100GB
         EnableTpm = $false
-        Notes = "Domain Controller, DNS, DHCP und Intune Connector fuer Autopilot Hybrid Schulung. Basis: Windows Server 2025."
+        Notes = "Domain Controller, DNS, DHCP und Intune Connector fuer Autopilot Hybrid Schulung. Basis: Windows Server 2025. CPU: 8 vCPU."
     },
     @{
         Name = "WIN11-Normal"
@@ -62,10 +67,10 @@ $VMDefinitions = @(
         Memory = 4GB
         MinMemory = 2GB
         MaxMemory = 8GB
-        Cpu = 2
+        Cpu = 4
         VhdSize = 100GB
         EnableTpm = $true
-        Notes = "Normales Windows 11 Vergleichsgeraet. Darf klassisch installiert werden."
+        Notes = "Normales Windows 11 Vergleichsgeraet. Darf klassisch installiert werden. CPU: 4 vCPU."
     },
     @{
         Name = "WIN11-OOBE"
@@ -73,10 +78,10 @@ $VMDefinitions = @(
         Memory = 4GB
         MinMemory = 2GB
         MaxMemory = 8GB
-        Cpu = 2
+        Cpu = 4
         VhdSize = 100GB
         EnableTpm = $true
-        Notes = "Autopilot-Testgeraet. Nur bis OOBE installieren. Nicht fertig einrichten."
+        Notes = "Autopilot-Testgeraet. Nur bis OOBE installieren. Nicht fertig einrichten. CPU: 4 vCPU."
     }
 )
 
@@ -84,6 +89,7 @@ Write-Host ""
 Write-Host "Erstelle innere Autopilot-Lab-VMs..." -ForegroundColor Cyan
 Write-Host "Server-ISO: $ServerIso"
 Write-Host "Windows-11-ISO: $Win11Iso"
+Write-Host "CPU: DC01=8 vCPU, WIN11-Normal=4 vCPU, WIN11-OOBE=4 vCPU"
 
 Assert-HyperVReady
 
@@ -121,8 +127,12 @@ function New-AutopilotTrainingVM {
     $ThisVMPath = Join-Path $VMPath $Name
     $ThisVHDPath = Join-Path $VHDXPath "$Name.vhdx"
 
-    if (Get-VM -Name $Name -ErrorAction SilentlyContinue) {
-        Write-Host "VM existiert bereits, ueberspringe: $Name" -ForegroundColor Yellow
+    $ExistingVM = Get-VM -Name $Name -ErrorAction SilentlyContinue
+    if ($ExistingVM) {
+        Write-Host "VM existiert bereits, setze CPU und Notizen: $Name" -ForegroundColor Yellow
+        Set-VMProcessor -VMName $Name -Count $Cpu
+        Set-VM -Name $Name -Notes $Notes
+        Write-Host "CPU gesetzt fuer $Name: $Cpu vCPU" -ForegroundColor Green
         return
     }
 
@@ -157,7 +167,7 @@ function New-AutopilotTrainingVM {
 
     Set-VM -Name $Name -Notes $Notes
 
-    Write-Host "VM erstellt: $Name" -ForegroundColor Green
+    Write-Host "VM erstellt: $Name mit $Cpu vCPU" -ForegroundColor Green
 }
 
 foreach ($VM in $VMDefinitions) {
@@ -165,14 +175,18 @@ foreach ($VM in $VMDefinitions) {
 }
 
 Write-Host ""
-Write-Host "Innere VMs wurden erstellt." -ForegroundColor Green
+Write-Host "Innere VMs wurden erstellt/geprueft." -ForegroundColor Green
+Write-Host "CPU-Zuordnung:"
+Write-Host "- DC01: 8 vCPU"
+Write-Host "- WIN11-Normal: 4 vCPU"
+Write-Host "- WIN11-OOBE: 4 vCPU"
 Write-Host ""
 Write-Host "Installationsreihenfolge:"
 Write-Host "1. DC01 mit Windows Server 2025 installieren"
 Write-Host "2. In DC01: 03-Setup-DC01-AutopilotHybrid.ps1 ausfuehren"
 Write-Host "3. WIN11-Normal normal installieren"
-Write-Host "4. WIN11-OOBE nur bis OOBE installieren und dort stoppen"
+Write-Host "4. WIN11-OOBE installieren, Hash erzeugen und danach Sysprep/OOBE nutzen"
 Write-Host ""
-Write-Host "Wichtig: WIN11-OOBE nicht mit lokalem Benutzer fertig einrichten."
+Write-Host "Wichtig: WIN11-OOBE nicht dauerhaft mit lokalem Benutzer weiterverwenden."
 
 Stop-Transcript
