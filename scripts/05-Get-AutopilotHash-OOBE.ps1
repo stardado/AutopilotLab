@@ -78,6 +78,20 @@ function Install-AutopilotScript {
     Install-Script -Name Get-WindowsAutopilotInfo -Force
 }
 
+function New-ConsoleCredential {
+    param (
+        [string]$TargetUser,
+        [string]$AdminShare
+    )
+
+    Write-Host ""
+    Write-Host "Zugang fuer $AdminShare" -ForegroundColor Cyan
+    Write-Host "Benutzer: $TargetUser"
+    $SecureSecret = Read-Host "Kennwort eingeben" -AsSecureString
+
+    return New-Object System.Management.Automation.PSCredential ($TargetUser, $SecureSecret)
+}
+
 function Copy-And-VerifyCsvToHyperVHost {
     param (
         [string]$CsvPath,
@@ -102,7 +116,7 @@ function Copy-And-VerifyCsvToHyperVHost {
     Write-Host "Hyper-V-Host: $($Target.HostIp)"
     Write-Host "Admin-Share: $($Target.AdminShare)"
 
-    $Credential = Get-Credential -UserName $TargetUser -Message "Zugang fuer $($Target.AdminShare)"
+    $Credential = New-ConsoleCredential -TargetUser $TargetUser -AdminShare $Target.AdminShare
     $DriveName = "HV" + ([guid]::NewGuid().ToString("N").Substring(0, 8))
 
     try {
