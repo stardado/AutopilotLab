@@ -18,6 +18,7 @@ param (
     [string]$GroupTag = "HYBRID-TRAINING",
     [string]$OutputPath = "C:\HWID",
     [string]$OutputFileName = "WIN11-OOBE-Autopilot.csv",
+    [string]$AutopilotToolPath = "C:\Deploy\AutopilotTools",
     [int]$HyperVHostOctet = 50,
     [string]$TargetUser = "Administrator",
     [string]$TargetDesktopRelativePath = "Users\Administrator\Desktop",
@@ -64,9 +65,41 @@ function Get-HyperVHostTarget {
     }
 }
 
+function Find-AutopilotInfoScript {
+    param ([string]$PreferredPath)
+
+    $Candidates = @()
+    $Candidates += (Join-Path $PreferredPath "Get-WindowsAutopilotInfo.ps1")
+    $Candidates += "C:\Program Files\WindowsPowerShell\Scripts\Get-WindowsAutopilotInfo.ps1"
+    $Candidates += "C:\Program Files (x86)\WindowsPowerShell\Scripts\Get-WindowsAutopilotInfo.ps1"
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path $Candidate) {
+            return $Candidate
+        }
+    }
+
+    $Command = Get-Command "Get-WindowsAutopilotInfo.ps1" -ErrorAction SilentlyContinue
+    if ($Command -and (Test-Path $Command.Source)) {
+        return $Command.Source
+    }
+
+    return $null
+}
+
 function Install-AutopilotScript {
+    param ([string]$TargetPath)
+
     Set-ExecutionPolicy Bypass -Scope Process -Force
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    New-Item -ItemType Directory -Path $TargetPath -Force | Out-Null
+
+    $ExistingScript = Find-AutopilotInfoScript -PreferredPath $TargetPath
+    if ($ExistingScript) {
+        Write-Host "Get-WindowsAutopilotInfo vorhanden: $ExistingScript" -ForegroundColor Green
+        return $ExistingScript
+    }
 
     try {
         Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
@@ -74,8 +107,26 @@ function Install-AutopilotScript {
         Write-Host "PSGallery konnte nicht auf Trusted gesetzt werden: $_" -ForegroundColor Yellow
     }
 
+    Write-Host "Installiere NuGet Package Provider..." -ForegroundColor Cyan
     Install-PackageProvider -Name NuGet -Force | Out-Null
-    Install-Script -Name Get-WindowsAutopilotInfo -Force
+
+    Write-Host "Speichere Get-WindowsAutopilotInfo nach $TargetPath ..." -ForegroundColor Cyan
+
+    try {
+        Save-Script -Name Get-WindowsAutopilotInfo -Path $TargetPath -Force -ErrorAction Stop
+    } catch {
+        Write-Host "Save-Script fehlgeschlagen, versuche Install-Script als Fallback: $_" -ForegroundColor Yellow
+        Install-Script -Name Get-WindowsAutopilotInfo -Force -ErrorAction Stop
+    }
+
+    $ScriptPath = Find-AutopilotInfoScript -PreferredPath $TargetPath
+
+    if (-not $ScriptPath) {
+        throw "Get-WindowsAutopilotInfo.ps1 wurde nach Installation nicht gefunden."
+    }
+
+    Write-Host "Get-WindowsAutopilotInfo bereit: $ScriptPath" -ForegroundColor Green
+    return $ScriptPath
 }
 
 function New-ConsoleCredential {
@@ -168,15 +219,15 @@ Write-Host "Autopilot Hardware Hash Export" -ForegroundColor Cyan
 Write-Host "GroupTag: $GroupTag"
 Write-Host "CSV lokal: $CsvPath"
 
-Install-AutopilotScript
+$AutopilotScript = Install-AutopilotScript -TargetPath $AutopilotToolPath
 
 if ($Online) {
-    Get-WindowsAutopilotInfo.ps1 -Online -GroupTag $GroupTag
+    & $AutopilotScript -Online -GroupTag $GroupTag
     Write-Host "Online-Upload wurde angestossen. Sysprep wird bei -Online nicht automatisch gestartet." -ForegroundColor Yellow
     exit
 }
 
-Get-WindowsAutopilotInfo.ps1 -OutputFile $CsvPath -GroupTag $GroupTag
+& $AutopilotScript -OutputFile $CsvPath -GroupTag $GroupTag
 
 Write-Host ""
 Write-Host "Hardware Hash wurde lokal erstellt:" -ForegroundColor Green
