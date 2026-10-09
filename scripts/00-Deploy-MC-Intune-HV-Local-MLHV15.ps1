@@ -21,6 +21,7 @@ param (
     [int]$StartVLAN = 555,
     [ValidateRange(1,7)]
     [int]$EnvironmentCount = 7,
+    [int]$NumberBaseVLAN = 555,
     [string]$EnvironmentNamePrefix = "MC-Intune-HV",
     [string]$ClusterName = "ML-CL-11",
     [string]$SwitchName = "XG_Link",
@@ -50,6 +51,21 @@ function Generate-MACAddress {
     $MACIPFormatted = $MACIPStr.Substring(1, 2)
 
     return "00:15:5D:" + $VLANPart1 + ":" + $VLANPart2 + ":" + $MACIPFormatted
+}
+
+function Get-EnvironmentNumber {
+    param (
+        [int]$VLAN,
+        [int]$BaseVLAN
+    )
+
+    $Number = $VLAN - $BaseVLAN + 1
+
+    if ($Number -lt 1) {
+        throw "Ungueltige Nummerierung: VLAN $VLAN liegt vor Basis-VLAN $BaseVLAN."
+    }
+
+    return $Number.ToString("00")
 }
 
 function Invoke-RobocopySafe {
@@ -111,6 +127,7 @@ Write-Host "MC Intune HV Direkt-Deployment auf $env:COMPUTERNAME" -ForegroundCol
 Write-Host "Start-VLAN: $StartVLAN"
 Write-Host "End-VLAN: $EndVLAN"
 Write-Host "Anzahl: $EnvironmentCount"
+Write-Host "Nummerierung ab VLAN: $NumberBaseVLAN"
 Write-Host "Template: $TemplateFullPath"
 Write-Host "VM-Storage: $VmStoragePath"
 Write-Host "Switch: $SwitchName"
@@ -122,8 +139,8 @@ Write-Host ""
 
 Write-Host "Geplant:" -ForegroundColor Cyan
 for ($i = 1; $i -le $EnvironmentCount; $i++) {
-    $EnvironmentNumber = $i.ToString("00")
     $EnvironmentVLAN = $StartVLAN + $i - 1
+    $EnvironmentNumber = Get-EnvironmentNumber -VLAN $EnvironmentVLAN -BaseVLAN $NumberBaseVLAN
     Write-Host "- V$EnvironmentVLAN $EnvironmentNamePrefix-$EnvironmentNumber"
 }
 
@@ -135,14 +152,14 @@ if ($Confirm -notin @("J", "j", "Y", "y")) {
 }
 
 for ($i = 1; $i -le $EnvironmentCount; $i++) {
-    $EnvironmentNumber = $i.ToString("00")
     $EnvironmentVLAN = $StartVLAN + $i - 1
+    $EnvironmentNumber = Get-EnvironmentNumber -VLAN $EnvironmentVLAN -BaseVLAN $NumberBaseVLAN
     $HVName = "V$EnvironmentVLAN $EnvironmentNamePrefix-$EnvironmentNumber"
 
     $HVFolder = Join-Path $VmStoragePath $HVName
     $HVVhdPath = Join-Path $HVFolder "$HVName.vhdx"
 
-    $MACIP = 100 + $i
+    $MACIP = 100 + ([int]$EnvironmentNumber)
     $HVMAC = Generate-MACAddress -VLAN $EnvironmentVLAN -MACIP $MACIP
 
     Write-Host ""
@@ -215,7 +232,7 @@ for ($i = 1; $i -le $EnvironmentCount; $i++) {
 Write-Host ""
 Write-Host "Deployment abgeschlossen." -ForegroundColor Green
 for ($i = 1; $i -le $EnvironmentCount; $i++) {
-    $EnvironmentNumber = $i.ToString("00")
     $EnvironmentVLAN = $StartVLAN + $i - 1
+    $EnvironmentNumber = Get-EnvironmentNumber -VLAN $EnvironmentVLAN -BaseVLAN $NumberBaseVLAN
     Write-Host "- V$EnvironmentVLAN $EnvironmentNamePrefix-$EnvironmentNumber"
 }
