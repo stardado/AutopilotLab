@@ -14,7 +14,7 @@
 
 param (
     [string]$NewComputerName = "DC01",
-    [string]$DomainName = "training.local",
+    [string]$DomainName = "training.internal",
     [string]$NetbiosName = "TRAINING",
     [int]$EnvironmentVLAN = 0,
     [string]$IPAddress = "",
@@ -99,6 +99,7 @@ Write-Host "VLAN: $EnvironmentVLAN"
 Write-Host "IP: $IPAddress/$PrefixLength"
 Write-Host "Gateway: $Gateway"
 Write-Host "DHCP: $DhcpStart - $DhcpEnd"
+Write-Host "Domaene: $DomainName"
 Write-Host ""
 
 if ($env:COMPUTERNAME -ne $NewComputerName) {
