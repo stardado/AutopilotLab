@@ -132,7 +132,7 @@ function New-AutopilotTrainingVM {
         Write-Host "VM existiert bereits, setze CPU und Notizen: $Name" -ForegroundColor Yellow
         Set-VMProcessor -VMName $Name -Count $Cpu
         Set-VM -Name $Name -Notes $Notes
-        Write-Host "CPU gesetzt fuer $Name: $Cpu vCPU" -ForegroundColor Green
+        Write-Host "CPU gesetzt fuer ${Name}: $Cpu vCPU" -ForegroundColor Green
         return
     }
 
